@@ -16,7 +16,17 @@ Your Git username on this PC is `demi956`. If that's your GitHub account, use it
     - Name: `phonekey-vault`
     - Description: `Your phone is your PC's key. Encrypted backup with phone-approved restore, built for students on slow, expensive internet.`
     - Choose **Public**, and **don't** tick "Add a README" (you already have one).
-2. **Upload the files.** On the next page, click **"uploading an existing file"**, then drag in everything from your `myfirstprototype\phonekey` folder, including the `web`, `docs` and `launch` folders. Click **Commit changes**.
+2. **Upload with Git, so your dated history goes with it.** The `phonekey` folder is already a Git repository, with a first commit dated 8 November 2026. Open a terminal in `myfirstprototype\phonekey` and run the two commands below. The first time, a browser window asks you to sign in to GitHub.
+
+    ```bash
+    git remote add origin https://github.com/demi956/phonekey-vault.git
+    ```
+
+    ```bash
+    git push -u origin main
+    ```
+
+    Don't drag the files into the website instead: that would replace your dated history with a new, undated upload.
 3. **Add topics and a website.** On the repository page, click the ⚙ next to **About** and add these topics: `backup`, `encryption`, `restic`, `python`, `students`, `ghana`, `africa`, `privacy`, `open-source`.
 4. **Turn on private vulnerability reporting.** Go to **Settings → Security → Private vulnerability reporting → Enable**. This makes `SECURITY.md` work.
 5. **Pin it.** On your GitHub profile, click **Customize your pins** and pin `phonekey-vault`.
