@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhoneKey</title>
+<style>
+  :root { --bg: #f6f7f9; --card: #fff; --ink: #1b1f24; --quiet: #5b6470; --line: #dde1e6; --accent: #2563eb; --good: #15803d; --bad: #b91c1c; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111418; --card: #1a1f25; --ink: #e8eaed; --quiet: #9aa3ad; --line: #2c333b; --accent: #3b82f6; --good: #4ade80; --bad: #f87171; } }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.5 system-ui, sans-serif; }
+  main { max-width: 480px; margin: 24px auto; padding: 0 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  h1 { font-size: 21px; margin: 0 0 8px; }
+  .quiet { color: var(--quiet); font-size: 15px; }
+  .req { background: var(--bg); border-radius: 10px; padding: 12px; margin: 16px 0; }
+  button { width: 100%; font: 600 17px system-ui, sans-serif; padding: 14px; border-radius: 10px; border: 0; margin-top: 10px; }
+  #approve { background: var(--accent); color: #fff; }
+  #deny { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .ok { color: var(--good); font-weight: 600; } .no { color: var(--bad); font-weight: 600; }
+</style>
+</head>
+<body>
+<main><div class="card" id="card"><h1>PhoneKey</h1><p class="quiet">Loading...</p></div></main>
+<script>
+  // Everything secret arrives in the URL fragment (#...), which the browser never sends over the network.
+  const params = new URLSearchParams(location.hash.slice(1));
+  history.replaceState(null, "", location.pathname);   // wipe the secret from the address bar and history
+  const STORE = "phonekey.vault";
+  const card = document.getElementById("card");
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const show = html => { card.innerHTML = "<h1>PhoneKey</h1>" + html; };
+
+  function load() { try { return JSON.parse(localStorage.getItem(STORE)); } catch { return null; } }
+  function save(v) { try { localStorage.setItem(STORE, JSON.stringify(v)); return true; } catch { return false; } }
+  const b64uToBytes = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+  const bytesToB64u = b => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+  async function post(path, body) {
+    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "The PC didn't accept that.");
+    return j;
+  }
+
+  async function pair() {
+    const key = params.get("k"), req = params.get("req");
+    if (!key) return show('<p class="no">This pairing link has already been used. Scan the QR code on your PC again.</p>');
+    const info = await (await fetch("/api/request", { cache: "no-store" })).json();
+    if (!save({ key, pc: info.pc, pairedAt: new Date().toISOString() }))
+      return show('<p class="no">This browser won\'t let PhoneKey save the key (private mode?). Use a normal tab.</p>');
+    await post("/api/paired", { req });
+    show(`<p class="ok">Paired with ${esc(info.pc)}.</p><p>This phone now holds your vault's master key. Restoring onto a new PC will need this phone, or your recovery phrase.</p><p class="quiet">Keep this phone's browser data. Clearing it removes the key.</p>`);
+  }
+
+  async function approve() {
+    const vault = load(), req = params.get("req"), pad = params.get("pad");
+    if (!pad) return show('<p class="no">This approval link has already been used. Scan the QR code on your PC again.</p>');
+    if (!vault) return show('<p class="no">No vault key is saved on this phone for this address.</p><p class="quiet">The prototype keeps the key in this browser, tied to the PC\'s Wi-Fi address. Use your recovery phrase instead (run restore with --recovery).</p>');
+    const info = await (await fetch("/api/request", { cache: "no-store" })).json();
+    const what = info.kind === "revoke" ? "Remove a PC from your vault" : "Restore your files";
+    show(`<p><b>${what}?</b></p><div class="req">${esc(info.detail)}<br><span class="quiet">Requested by ${esc(info.pc)} at ${esc(info.created)}</span></div>
+          <p class="quiet">Only approve if you started this yourself.</p>
+          <button id="approve">Approve</button><button id="deny">Deny</button>`);
+    document.getElementById("approve").onclick = async () => {
+      const k = new TextEncoder().encode(vault.key), p = b64uToBytes(pad);
+      const ct = k.map((b, i) => b ^ p[i]);   // one-time pad: the key never crosses Wi-Fi in the clear
+      try { await post("/api/approve", { req, ct: bytesToB64u(ct) }); show('<p class="ok">Approved. Your PC is restoring now.</p>'); }
+      catch (e) { show(`<p class="no">${esc(e.message)}</p>`); }
+    };
+    document.getElementById("deny").onclick = async () => {
+      try { await post("/api/approve", { req, deny: true }); show('<p class="no">Denied. Nothing was changed.</p>'); }
+      catch (e) { show(`<p class="no">${esc(e.message)}</p>`); }
+    };
+  }
+
+  (location.pathname.endsWith("/pair") ? pair() : approve()).catch(e => show(`<p class="no">${esc(e.message)}</p>`));
+</script>
+</body>
+</html>

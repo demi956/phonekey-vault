@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+# never commit a real vault or local config
+PhoneKeyVault/
+config.json
